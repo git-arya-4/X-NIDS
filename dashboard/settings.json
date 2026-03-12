@@ -1,0 +1,14 @@
+{
+  "pps_threshold": 100,
+  "time_window": 5,
+  "baseline_duration": 60,
+  "polling_interval": 1,
+  "max_data_points": 60,
+  "burst_tolerance": 3,
+  "port_scan_threshold": 15,
+  "risk_alert_threshold": 50,
+  "sigma_mult": 2.0,
+  "browser_notifications": false,
+  "email_alerts": false,
+  "telegram_alerts": false
+}

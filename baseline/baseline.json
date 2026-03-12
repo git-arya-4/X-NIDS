@@ -1,0 +1,41 @@
+{
+    "duration_seconds": 64.35781383514404,
+    "total_packets": 606,
+    "avg_packets_per_sec": 9.416106046614653,
+    "avg_unique_ports_per_window": 6.666666666666667,
+    "avg_connections_per_ip": 37.875,
+    "protocol_distribution_percentage": {
+        "TCP": 87.45874587458746,
+        "UDP": 11.716171617161717,
+        "ICMP": 0.0,
+        "Other": 0.825082508250825
+    },
+    "history_packet_counts": [
+        40,
+        2,
+        36,
+        46,
+        120,
+        61,
+        163,
+        10,
+        67,
+        8,
+        52,
+        1
+    ],
+    "history_unique_ports": [
+        8,
+        1,
+        5,
+        6,
+        15,
+        8,
+        13,
+        4,
+        9,
+        4,
+        6,
+        1
+    ]
+}

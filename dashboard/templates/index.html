@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>X-NIDS — Security Operations Center</title>
+    <meta name="description" content="Real-time Network Intrusion Detection SOC Dashboard" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+
+<body>
+
+    <!-- ─── Sidebar ─── -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            <span>X-NIDS</span>
+        </div>
+
+        <nav class="sidebar-nav">
+            <p class="nav-group">Monitoring</p>
+            <a class="nav-link active" data-page="dashboard" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+                Dashboard
+            </a>
+            <a class="nav-link" data-page="analysis" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+                Traffic Analysis
+            </a>
+            <a class="nav-link" data-page="alerts" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                Alerts
+                <span class="badge" id="alertBadge">0</span>
+            </a>
+            <a class="nav-link" data-page="incidents" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                    <rect x="8" y="2" width="8" height="4" rx="1" />
+                    <line x1="9" y1="12" x2="15" y2="12" />
+                    <line x1="9" y1="16" x2="13" y2="16" />
+                </svg>
+                Incidents
+            </a>
+
+            <p class="nav-group">Intelligence</p>
+            <a class="nav-link" data-page="threat" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                Threat Score
+            </a>
+            <a class="nav-link" data-page="dns" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path
+                        d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+                DNS Analysis
+            </a>
+            <a class="nav-link" data-page="beaconing" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5.636 18.364a9 9 0 0 1 0-12.728" />
+                    <path d="M18.364 5.636a9 9 0 0 1 0 12.728" />
+                    <path d="M8.464 15.536a5 5 0 0 1 0-7.072" />
+                    <path d="M15.536 8.464a5 5 0 0 1 0 7.072" />
+                    <circle cx="12" cy="12" r="1" />
+                </svg>
+                C2 Beaconing
+            </a>
+            <a class="nav-link" data-page="assets" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" />
+                    <line x1="8" y1="21" x2="16" y2="21" />
+                    <line x1="12" y1="17" x2="12" y2="21" />
+                </svg>
+                Network Assets
+            </a>
+
+            <p class="nav-group">Analysis</p>
+            <a class="nav-link" data-page="analytics" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10" />
+                    <line x1="12" y1="20" x2="12" y2="4" />
+                    <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+                Analytics
+            </a>
+            <a class="nav-link" data-page="netmap" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="2" />
+                    <circle cx="6" cy="6" r="2" />
+                    <circle cx="18" cy="6" r="2" />
+                    <circle cx="6" cy="18" r="2" />
+                    <circle cx="18" cy="18" r="2" />
+                    <line x1="12" y1="10" x2="6" y2="8" />
+                    <line x1="12" y1="10" x2="18" y2="8" />
+                    <line x1="12" y1="14" x2="6" y2="16" />
+                    <line x1="12" y1="14" x2="18" y2="16" />
+                </svg>
+                Network Map
+            </a>
+
+            <p class="nav-group">System</p>
+            <a class="nav-link" data-page="simulation" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+                Attack Simulator
+            </a>
+            <a class="nav-link" data-page="settings" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                Settings
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="status-dot" id="statusDot"></div>
+            <span class="status-text" id="statusText">Connecting…</span>
+        </div>
+    </aside>
+
+    <!-- ─── Main Content ─── -->
+    <div class="main-wrapper">
+        <header class="topbar">
+            <div class="topbar-left">
+                <span class="page-crumb" id="pageCrumb">Dashboard</span>
+            </div>
+            <div class="topbar-right">
+                <span class="live-pill" id="livePill">
+                    <span class="live-dot"></span>
+                    <span id="liveLabel">LIVE</span>
+                </span>
+                <span class="topbar-sep">|</span>
+                <button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">
+                    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5" />
+                        <line x1="12" y1="1" x2="12" y2="3" />
+                        <line x1="12" y1="21" x2="12" y2="23" />
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                        <line x1="1" y1="12" x2="3" y2="12" />
+                        <line x1="21" y1="12" x2="23" y2="12" />
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                    </svg>
+                    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                    </svg>
+                </button>
+                <span class="topbar-sep">|</span>
+                <span class="clock" id="clock">--:--:-- | -- --- ---- | ---</span>
+            </div>
+        </header>
+
+        <main class="main" id="main">
+            <!-- Pages are rendered here by JS -->
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/network_map.js"></script>
+</body>
+
+</html>
