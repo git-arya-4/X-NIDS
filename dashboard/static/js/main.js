@@ -33,7 +33,7 @@ function navigate(page) {
     const crumbs = {
         dashboard: "Dashboard", analysis: "Traffic Analysis", alerts: "Alerts", incidents: "Correlated Incidents",
         threat: "Threat Score", dns: "DNS Analysis", beaconing: "C2 Beaconing", assets: "Network Assets",
-        analytics: "Analytics", netmap: "Network Map", simulation: "Attack Simulator", settings: "Settings"
+        analytics: "Analytics", netmap: "Network Map", settings: "Settings"
     };
 
     const crumbEl = document.getElementById("pageCrumb");

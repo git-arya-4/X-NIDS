@@ -109,20 +109,10 @@ function startNetmap() {
         return glowCache[key];
     }
 
-    /* ── Layout: circular, computed only when topology changes ── */
+    /* ── Layout: physics target layout ── */
     function computeLayout() {
-        if (!w || !h || nodes.length === 0) return;
-        const cx = w / 2, cy = h / 2;
-        const radius = Math.min(w, h) / 2.8;
-        const count = nodes.length;
-        for (let i = 0; i < count; i++) {
-            const n = nodes[i];
-            // Only assign position if the node has no dragged position
-            if (n._dragged) continue;
-            const angle = (Math.PI * 2 * i) / count;
-            n.x = cx + Math.cos(angle) * radius;
-            n.y = cy + Math.sin(angle) * radius;
-        }
+        // Physical positions are now handled continuously in the render loop.
+        // We only clear the dirty flag to prevent continuous forced updates.
         layoutDirty = false;
         renderDirty = true;
     }
@@ -179,9 +169,11 @@ function startNetmap() {
     }
 
     let lastTheme = null;
+    let orbitAngleOff = 0;
+    let lastTime = 0;
 
     /* ── Render (called via rAF only when dirty) ── */
-    function render() {
+    function render(timestamp) {
         if (!alive) return;
         animId = requestAnimationFrame(render);
 
@@ -190,6 +182,65 @@ function startNetmap() {
             lastTheme = currentTheme;
             renderDirty = true;
         }
+
+        const now = timestamp || performance.now();
+        const dt = lastTime ? Math.min(32, now - lastTime) : 16;
+        lastTime = now;
+
+        // ── Physics & Orbit Engine ──
+        let physicsMoved = false;
+        if (nodes.length > 0 && w && h) {
+            orbitAngleOff += 0.0003 * dt; // Slow, stable orbit
+            const cx = w / 2, cy = h / 2;
+            const radius = Math.min(w, h) / 2.8;
+            const count = nodes.length;
+
+            for (let i = 0; i < count; i++) {
+                const n = nodes[i];
+                if (n._dragged || n._placeholder) continue;
+
+                // 1. Orbital Target
+                const targetAngle = (Math.PI * 2 * i) / count + orbitAngleOff;
+                const targetX = cx + Math.cos(targetAngle) * radius;
+                const targetY = cy + Math.sin(targetAngle) * radius;
+
+                let fx = (targetX - n.x) * 0.04; // Spring to orbit
+                let fy = (targetY - n.y) * 0.04;
+
+                // 2. Node Overlap Repulsion
+                for (let j = 0; j < count; j++) {
+                    if (i === j) continue;
+                    const n2 = nodes[j];
+                    const dx = n.x - n2.x;
+                    const dy = n.y - n2.y;
+                    const distSq = dx * dx + dy * dy;
+                    if (distSq > 0) {
+                        const rSum = nodeRadius(n) + nodeRadius(n2) + 20; // 20px padding
+                        if (distSq < rSum * rSum) {
+                            const dist = Math.sqrt(distSq);
+                            const force = (rSum - dist) * 0.15;
+                            fx += (dx / dist) * force;
+                            fy += (dy / dist) * force;
+                        }
+                    }
+                }
+
+                // 3. Gentle Molecule Float
+                fx += Math.sin(now * 0.001 + i * 7.3) * 0.25;
+                fy += Math.cos(now * 0.0013 + i * 5.7) * 0.25;
+
+                n.vx = (n.vx || 0) * 0.82 + fx;
+                n.vy = (n.vy || 0) * 0.82 + fy;
+
+                if (Math.abs(n.vx) > 0.02 || Math.abs(n.vy) > 0.02) {
+                    n.x += n.vx;
+                    n.y += n.vy;
+                    physicsMoved = true;
+                }
+            }
+        }
+
+        if (physicsMoved) renderDirty = true;
 
         if (!renderDirty) return;
         renderDirty = false;
@@ -200,12 +251,14 @@ function startNetmap() {
         const theme = {
             bg: isLight ? "#f0f2f5" : "#06080d",
             waitingText: isLight ? "#475569" : "#64748b",
-            edgeNormal: isLight ? "rgba(37,99,235,0.3)" : "rgba(59,130,246,0.15)",
-            edgeAlert: isLight ? "rgba(220,38,38,0.4)" : "rgba(239,68,68,0.25)",
-            spokeColor: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.04)",
+            edgeNormal: isLight ? "#4B5563" : "#5B7FFF",
+            edgeAlert: isLight ? "rgba(220, 38, 38, 0.8)" : "rgba(239, 68, 68, 0.8)",
+            spokeColor: isLight ? "#4B5563" : "#5B7FFF",
             hubText: isLight ? "#ffffff" : "#ffffff",
             labelText: isLight ? "#64748b" : "#94a3b8",
-            subLabelText: isLight ? "#94a3b8" : "#64748b"
+            subLabelText: isLight ? "#94a3b8" : "#64748b",
+            edgeGlow: isLight ? null : "rgba(91, 127, 255, 0.5)",
+            alertGlow: isLight ? null : "rgba(239, 68, 68, 0.5)"
         };
 
         // If the theme changed, we must re-render exactly at 60fps instead of resting
@@ -238,7 +291,13 @@ function startNetmap() {
         }
 
         /* 1. Edges (batched by color to minimize state changes) */
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1.8;
+
+        if (theme.edgeGlow) {
+            ctx.shadowColor = theme.edgeGlow;
+            ctx.shadowBlur = 6;
+        }
+
         // Normal edges
         ctx.beginPath();
         ctx.strokeStyle = theme.edgeNormal;
@@ -253,6 +312,9 @@ function startNetmap() {
         ctx.stroke();
 
         // Alerted edges
+        if (theme.alertGlow) {
+            ctx.shadowColor = theme.alertGlow;
+        }
         ctx.beginPath();
         ctx.strokeStyle = theme.edgeAlert;
         for (const e of edges) {
@@ -266,6 +328,9 @@ function startNetmap() {
         ctx.stroke();
 
         /* 2. Spokes to center hub */
+        if (theme.edgeGlow) {
+            ctx.shadowColor = theme.edgeGlow;
+        }
         ctx.beginPath();
         ctx.strokeStyle = theme.spokeColor;
         for (const n of nodes) {
@@ -275,6 +340,9 @@ function startNetmap() {
         }
         ctx.stroke();
 
+        if (theme.alertGlow) {
+            ctx.shadowColor = theme.alertGlow;
+        }
         ctx.beginPath();
         ctx.strokeStyle = theme.edgeAlert;
         for (const n of nodes) {
@@ -283,6 +351,10 @@ function startNetmap() {
             ctx.lineTo(n.x, n.y);
         }
         ctx.stroke();
+
+        // Reset shadow for subsequent rendering operations
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = "transparent";
 
         /* 3. Center hub (glow via cached bitmap) */
         const hubGlow = getGlow("#3b82f6", 18);

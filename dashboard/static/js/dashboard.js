@@ -240,30 +240,6 @@ function renderIncidents() {
     });
 }
 
-function renderSimulation() {
-    const main = document.getElementById("main");
-    main.innerHTML = `<div class="page-title">Attack Simulator</div><p style="color:var(--text-dim);margin-bottom:20px;">Generate synthetic attack traffic for SOC testing and demonstration.</p><div class="grid-2"><div class="card"><div class="card-header">Configure Simulation</div>
-    <div style="margin:20px 0"><label style="display:block;margin-bottom:8px">Attack Type</label><select id="simType" class="search-input" style="width:100%;max-width:none;padding:10px"><option value="port_scan">Port Scan (Discovery)</option><option value="packet_flood">Packet Flood (DoS)</option><option value="brute_force">Brute Force (Credential Access)</option></select></div>
-    <div style="margin:20px 0"><label style="display:block;margin-bottom:8px">Duration (seconds)</label><input type="number" id="simDur" class="search-input" value="30" min="10" max="120" style="width:100%;max-width:none;padding:10px"></div>
-    <div style="display:flex;gap:10px;margin-top:30px"><button onclick="startSim()" class="btn-save" id="simBtn">START SIMULATION</button><button onclick="stopSim()" class="btn-reset" id="stopBtn" disabled>STOP</button></div>
-    <div id="simMsg" style="margin-top:16px;font-family:var(--mono);font-size:.8rem"></div></div><div class="card"><div class="card-header">Simulation Status</div><div id="simLog" style="font-family:var(--mono);font-size:.8rem;color:var(--text-dim);background:var(--surface);padding:16px;border-radius:8px;min-height:200px;max-height:300px;overflow-y:auto">Fetching status...</div></div></div>`;
-
-    const checkStatus = () => {
-        if (currentPage !== 'simulation') return;
-        fetch("/api/simulate/status").then(r => r.json()).then(d => {
-            const bgBtn = document.getElementById("simBtn"); const stpBtn = document.getElementById("stopBtn");
-            if (bgBtn) { bgBtn.disabled = d.running; bgBtn.style.opacity = d.running ? "0.5" : "1"; }
-            if (stpBtn) { stpBtn.disabled = !d.running; }
-            const log = document.getElementById("simLog");
-            if (log) {
-                if (!d.log || !d.log.length) { log.innerHTML = "No recent simulations."; }
-                else { log.innerHTML = d.log.map(l => `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)"><span style="color:${l.status === 'running' ? 'var(--accent)' : 'var(--text)'}">[${l.started}] ${l.type} (${l.duration}s)</span> <br> <span style="font-size:.7rem;color:var(--text-dim)">Status: ${l.status.toUpperCase()}</span></div>`).join(""); }
-            }
-        });
-        setTimeout(checkStatus, 2000);
-    };
-    checkStatus();
-}
 
 function renderThreat() {
     const main = document.getElementById("main");
@@ -460,18 +436,12 @@ async function poll() {
         DATA = await res.json() || {};
 
         document.getElementById("livePill")?.classList.remove("offline");
-        const dot = document.getElementById("statusDot");
-        const txt = document.getElementById("statusText");
-        if (dot) dot.className = "status-dot online";
-        if (txt) txt.textContent = "Live";
+
         liveUpdate();
     } catch (err) {
         console.error("Poll error:", err);
         document.getElementById("livePill")?.classList.add("offline");
-        const dot = document.getElementById("statusDot");
-        const txt = document.getElementById("statusText");
-        if (dot) dot.className = "status-dot offline";
-        if (txt) txt.textContent = "Offline";
+
     }
 }
 
@@ -510,18 +480,7 @@ if (window.PAGES) {
         beaconing: renderBeaconing,
         assets: renderAssets,
         analytics: renderAnalytics,
-        simulation: renderSimulation,
         settings: renderSettings
     });
 }
 
-window.startSim = function () {
-    fetch("/api/simulate", { method: "POST", body: JSON.stringify({ type: document.getElementById("simType").value, duration: parseInt(document.getElementById("simDur").value) }) }).then(r => r.json()).then(d => {
-        document.getElementById("simMsg").innerHTML = `<span style="color:var(--green)">✓ Started ${d.type}</span>`;
-    });
-}
-window.stopSim = function () {
-    fetch("/api/simulate/stop", { method: "POST" }).then(r => r.json()).then(d => {
-        document.getElementById("simMsg").innerHTML = `<span style="color:var(--orange)">Stopped</span>`;
-    });
-}
