@@ -37,11 +37,18 @@ RISK_ALERT_THRESHOLD = 50
 
 # ── IP WHITELIST ──
 # Traffic from these IPs will never trigger anomaly alerts.
+# Supports individual IPs and CIDR ranges.
 WHITELIST = [
-    "8.8.8.8",        # Google DNS
-    "8.8.4.4",        # Google DNS secondary
-    "1.1.1.1",        # Cloudflare DNS
-    "1.0.0.1",        # Cloudflare DNS secondary
-    "192.168.1.1",    # Common gateway
-    "192.168.0.1",    # Common gateway
+    # Public DNS resolvers — never a threat
+    "8.8.8.8",            # Google Primary DNS
+    "8.8.4.4",            # Google Secondary DNS
+    "1.1.1.1",            # Cloudflare Primary DNS
+    "1.0.0.1",            # Cloudflare Secondary DNS
+    "9.9.9.9",            # Quad9 DNS
+    "149.112.112.112",    # Quad9 Secondary DNS
+    # Private LAN ranges
+    "10.0.0.0/8",         # Private LAN (Class A)
+    "192.168.0.0/16",     # Private LAN (Class C)
+    "172.16.0.0/12",      # Private LAN (Class B)
+    "127.0.0.0/8",        # Localhost
 ]

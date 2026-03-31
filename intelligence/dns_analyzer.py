@@ -23,10 +23,96 @@ SUSPICIOUS_TLDS = {
     "mov", "py", "rs", "su", "cc", "ws", "pw", "cn", "ru",
 }
 
+# ---------------------------------------------------------------------------
+# Known-legitimate domain whitelists (two levels)
+# ---------------------------------------------------------------------------
+
+# Level 1 — Exact subdomain match: skip these domains entirely
+KNOWN_SAFE_DOMAINS = {
+    # Intercom
+    "nexus-websocket-a.intercom.io",
+    "nexus-websocket-b.intercom.io",
+    "nexus-websocket.intercom.io",
+    "api.intercom.io",
+    "api-iam.intercom.io",
+    # Spotify
+    "gae2-spclient.spotify.com",
+    "spclient.wg.spotify.com",
+    "apresolve.spotify.com",
+    "api.spotify.com",
+    # Notion
+    "msgstore-001.www.notion.so",
+    "msgstore-002.www.notion.so",
+    "www.notion.so",
+    "api.notion.so",
+    # Google
+    "8.8.8.8",
+    "dns.google",
+    "googleapis.com",
+    # Cloudflare
+    "1.1.1.1",
+    "cloudflare.com",
+    "cloudflareinsights.com",
+    # Microsoft / Windows Update
+    "windowsupdate.com",
+    "update.microsoft.com",
+    "dl.delivery.mp.microsoft.com",
+    # Apple
+    "apple.com",
+    "icloud.com",
+    "captive.apple.com",
+    # Common CDNs
+    "fastly.net",
+    "akamaiedge.net",
+    "akamaized.net",
+    "cloudfront.net",
+}
+
+# Level 2 — Root domain suffix match: skip any subdomain of these roots
+KNOWN_SAFE_ROOTS = [
+    "google.com",
+    "googleapis.com",
+    "gstatic.com",
+    "youtube.com",
+    "facebook.com",
+    "instagram.com",
+    "whatsapp.com",
+    "amazon.com",
+    "amazonaws.com",
+    "spotify.com",
+    "intercom.io",
+    "notion.so",
+    "github.com",
+    "githubusercontent.com",
+    "microsoft.com",
+    "windows.com",
+    "apple.com",
+    "icloud.com",
+    "cloudflare.com",
+    "fastly.net",
+    "akamai.net",
+    "akamaiedge.net",
+    "cloudfront.net",
+    "slack.com",
+    "discord.com",
+    "zoom.us",
+    "dropbox.com",
+    "reddit.com",
+    "twitter.com",
+    "x.com",
+    "linkedin.com",
+    "netflix.com",
+    "twitch.tv",
+    "ubuntu.com",
+    "debian.org",
+    "npmjs.com",
+    "pypi.org",
+]
+
 # Threshold tuning
 DGA_ENTROPY_THRESHOLD = 3.5       # Shannon entropy above this → suspicious
 DGA_CONSONANT_RATIO = 0.65        # Consonant ratio above this → suspicious
-EXCESSIVE_QUERY_THRESHOLD = 30    # Queries per window from single src → suspicious
+EXCESSIVE_QUERY_THRESHOLD = 100   # Queries per window from single src → suspicious
 VOWELS = set("aeiou")
 CONSONANTS = set("bcdfghjklmnpqrstvwxyz")
 
@@ -48,6 +134,18 @@ def _consonant_ratio(domain):
     if not alpha:
         return 0.0
     return sum(1 for c in alpha if c in CONSONANTS) / len(alpha)
+
+
+def is_whitelisted(domain):
+    """Return True if *domain* is known-legitimate (skip all detection)."""
+    # Level 1: exact match
+    if domain in KNOWN_SAFE_DOMAINS:
+        return True
+    # Level 2: root domain match
+    for root in KNOWN_SAFE_ROOTS:
+        if domain == root or domain.endswith('.' + root):
+            return True
+    return False
 
 
 def _looks_like_dga(domain):
@@ -111,12 +209,14 @@ class DNSAnalyzer:
         new_suspicious = []
 
         # 1. Excessive queries from single source
+        #    Only count queries to non-whitelisted domains.
         for ip, domains in self.queries_per_ip.items():
-            if len(domains) >= EXCESSIVE_QUERY_THRESHOLD:
+            non_safe_count = sum(1 for d in domains if not is_whitelisted(d))
+            if non_safe_count >= EXCESSIVE_QUERY_THRESHOLD:
                 entry = {
-                    "domain": f"{len(domains)} queries",
+                    "domain": f"{non_safe_count} queries",
                     "src_ip": ip,
-                    "reason": f"Excessive DNS: {len(domains)} queries in one window",
+                    "reason": f"Excessive DNS: {non_safe_count} non-whitelisted queries in one window",
                     "timestamp": timestamp_str,
                     "dga_score": 0.0,
                     "tld": "—",
@@ -131,6 +231,10 @@ class DNSAnalyzer:
                 if domain in seen_domains:
                     continue
                 seen_domains.add(domain)
+
+                # ── Whitelist check (runs FIRST — before any scoring) ──
+                if is_whitelisted(domain):
+                    continue
 
                 parts = domain.rsplit(".", 1)
                 tld = parts[-1].lower() if len(parts) > 1 else ""

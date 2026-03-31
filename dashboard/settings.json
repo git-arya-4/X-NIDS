@@ -8,7 +8,5 @@
   "port_scan_threshold": 15,
   "risk_alert_threshold": 50,
   "sigma_mult": 2.0,
-  "browser_notifications": false,
-  "email_alerts": false,
-  "telegram_alerts": false
+  "browser_notifications": false
 }

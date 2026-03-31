@@ -26,6 +26,11 @@ function navigate(page) {
         if (window._netmapCleanup) window._netmapCleanup();
         if (window.netmapInterval) { clearInterval(window.netmapInterval); window.netmapInterval = null; }
     }
+    // Tear down geomap
+    if (page !== "geomap" && window._geomapInstance) {
+        window._geomapInstance.remove();
+        window._geomapInstance = null;
+    }
 
     currentPage = page;
     document.querySelectorAll(".nav-link").forEach(l => l.classList.toggle("active", l.dataset.page === page));
@@ -33,7 +38,8 @@ function navigate(page) {
     const crumbs = {
         dashboard: "Dashboard", analysis: "Traffic Analysis", alerts: "Alerts", incidents: "Correlated Incidents",
         threat: "Threat Score", dns: "DNS Analysis", beaconing: "C2 Beaconing", assets: "Network Assets",
-        analytics: "Analytics", netmap: "Network Map", settings: "Settings"
+        analytics: "Analytics", netmap: "Network Map", settings: "Settings",
+        geomap: "Geo Threat Map", attack: "ATT&CK Matrix", blocked: "Blocked IPs"
     };
 
     const crumbEl = document.getElementById("pageCrumb");

@@ -87,6 +87,24 @@
                 </svg>
                 C2 Beaconing
             </a>
+            <a class="nav-link" data-page="geomap" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path
+                        d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                    <circle cx="16" cy="8" r="1.5" fill="currentColor" />
+                </svg>
+                Geo Threat Map
+            </a>
+            <a class="nav-link" data-page="attack" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="3" y1="9" x2="21" y2="9" />
+                    <line x1="9" y1="3" x2="9" y2="21" />
+                </svg>
+                ATT&amp;CK Matrix
+            </a>
             <a class="nav-link" data-page="assets" href="#">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -128,6 +146,13 @@
                         d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                 </svg>
                 Settings
+            </a>
+            <a class="nav-link" data-page="blocked" href="#">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                </svg>
+                Blocked IPs
             </a>
         </nav>
 
@@ -173,7 +198,44 @@
         </main>
     </div>
 
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script>
+        if (window.Chart) {
+            Chart.defaults.font.family = "'Exo 2', sans-serif";
+            Chart.defaults.color = "#8BAFD4";
+
+            Chart.defaults.plugins = Chart.defaults.plugins || {};
+            Chart.defaults.plugins.legend = Chart.defaults.plugins.legend || { labels: {} };
+            Chart.defaults.plugins.legend.labels.font = { size: 13, family: "'Exo 2', sans-serif" };
+
+            Chart.defaults.scale.ticks.font = { size: 12, family: "'JetBrains Mono', monospace" };
+            Chart.defaults.scale.title.font = { size: 13, family: "'JetBrains Mono', monospace" };
+            Chart.defaults.scale.grid.color = "rgba(0, 245, 255, 0.08)";
+
+            const mo = new MutationObserver(() => {
+                const isL = document.documentElement.classList.contains('light');
+                const tColor = isL ? '#2A4A6B' : '#8BAFD4';
+                const gColor = isL ? 'rgba(0, 80, 255, 0.07)' : 'rgba(0, 245, 255, 0.08)';
+                Chart.defaults.color = tColor;
+                Chart.defaults.scale.grid.color = gColor;
+                if (window.charts) {
+                    Object.values(window.charts).forEach(c => {
+                        if (c.options.scales) {
+                            Object.values(c.options.scales).forEach(s => {
+                                if (s.ticks) s.ticks.color = tColor;
+                                if (s.grid) s.grid.color = gColor;
+                            });
+                        }
+                        if (c.options.plugins?.legend?.labels) c.options.plugins.legend.labels.color = tColor;
+                        c.update('none');
+                    });
+                }
+            });
+            mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+        }
+    </script>
     <script src="/static/js/main.js"></script>
     <script src="/static/js/dashboard.js"></script>
     <script src="/static/js/network_map.js"></script>

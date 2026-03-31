@@ -37,7 +37,27 @@ class NumpySafeEncoder(json.JSONEncoder):
 LOGS_DIR = "/home/cybersec/pro/X-NIDS/logs"
 METRICS_FILE = os.path.join(LOGS_DIR, "metrics.json")
 ALERTS_FILE = os.path.join(LOGS_DIR, "alerts.json")
-WHITELIST = set(getattr(config, "WHITELIST", []))
+import ipaddress
+
+def _is_whitelisted(ip_str):
+    wl = getattr(config, "WHITELIST", [])
+    if not wl:
+        return False
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        for entry in wl:
+            try:
+                if "/" in entry:
+                    if ip in ipaddress.ip_network(entry, strict=False):
+                        return True
+                else:
+                    if ip == ipaddress.ip_address(entry):
+                        return True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return False
 
 # ── RFC-1918 private ranges ──
 _PRIVATE_NETS = [
@@ -170,10 +190,92 @@ class FeatureExtractor:
         self.beaconing_detector = BeaconingDetector()
         self.alert_correlator = AlertCorrelator(merge_window=300)
 
+        # Track last threat score to suppress duplicate logs
+        self._last_threat_score = -1
+
     # ==================================================================
     #  Packet ingestion
     # ==================================================================
+    def _compute_threat_level(self):
+        """Compute threat score from ACTIVE recent alerts only.
+        
+        Formula:
+          - Only alerts from last 15 minutes are considered
+          - Alerts < 5 min old: full weight
+          - Alerts 5–15 min old: 50% weight
+          - Alerts > 15 min old: ignored
+          - CRITICAL × 40 pts, HIGH × 20 pts, MEDIUM × 10 pts
+          - Score = min(sum, 100), 0 when no active alerts
+        """
+        now = time.time()
+        
+        crit = 0
+        high = 0
+        med = 0
+        last_alert_epoch = 0
+
+        for a in self.alerts:
+            epoch = a.get("_epoch", 0)
+            if epoch <= 0:
+                continue
+            age = now - epoch
+            if age > 900:  # > 15 minutes — ignore completely
+                continue
+            
+            sev = (a.get("severity") or "").lower()
+            weight = 1.0 if age <= 300 else 0.5  # 50% after 5 min
+
+            if sev == "critical":
+                crit += weight
+            elif sev == "high":
+                high += weight
+            elif sev == "medium":
+                med += weight
+            
+            if epoch > last_alert_epoch:
+                last_alert_epoch = epoch
+
+        raw = (crit * 40) + (high * 20) + (med * 10)
+        score = int(min(100, raw))
+
+        # Label
+        if score == 0:
+            priority = "NONE"
+            status = "Normal"
+        elif score <= 30:
+            priority = "LOW"
+            status = "Normal"
+        elif score <= 60:
+            priority = "MEDIUM"
+            status = "Suspicious"
+        elif score <= 80:
+            priority = "HIGH"
+            status = "High Risk"
+        else:
+            priority = "CRITICAL"
+            status = "Critical"
+
+        # Time since last relevant alert
+        if last_alert_epoch > 0:
+            ago = int(now - last_alert_epoch)
+        else:
+            ago = -1
+
+        if score != self._last_threat_score:
+            print(f"  [THREAT] score changed: {self._last_threat_score} → {score}  "
+                  f"(active={int(crit+high+med)} C={crit:.0f} H={high:.0f} M={med:.0f})")
+            self._last_threat_score = score
+
+        return {
+            "score": score,
+            "status": status,
+            "priority": priority,
+            "last_alert_ago": ago,
+        }
+
     def process_packet(self, packet):
+        # ── PIPELINE 1: ALWAYS RUN (TRACKING & DISPLAY) ──
+        # Every packet is counted for metrics, protocol donuts, top IPs, and map.
         self.packet_count += 1
         self.total_packets += 1
 
@@ -201,6 +303,7 @@ class FeatureExtractor:
             self._update_network_asset(src, pkt_len)
             self._update_network_asset(dst, 0)
 
+            # ── Port usage tracking ──
             sport = 0
             dport = 0
             if packet.haslayer("TCP") or packet.haslayer("UDP"):
@@ -211,28 +314,34 @@ class FeatureExtractor:
                     self.ip_ports[src].add(dport)
                     self.ip_dst_port_hits[src][dport] += 1
 
-            # ── DNS query extraction ──
-            if packet.haslayer("DNS") and hasattr(packet["DNS"], "qd") and packet["DNS"].qd:
-                try:
-                    qname = packet["DNS"].qd.qname
-                    if isinstance(qname, bytes):
-                        qname = qname.decode("utf-8", errors="ignore").rstrip(".")
-                    elif isinstance(qname, str):
-                        qname = qname.rstrip(".")
-                    ts = time.strftime("%Y-%m-%d %H:%M:%S")
-                    self.dns_analyzer.process_dns(src, dst, qname, ts)
-                except Exception:
-                    pass
-
-            # ── C2 beaconing tracking ──
-            if not _is_private(dst) and dst not in WHITELIST:
-                self.beaconing_detector.record_connection(src, dst, pkt_len, is_external=True)
-
+            # ── Network Topology Map ──
             flow_key = (src, dst, sport, dport, proto_str)
             if flow_key not in self.flows:
                 self.flows[flow_key] = {"start": time.time(), "packets": 0, "bytes": 0}
             self.flows[flow_key]["packets"] += 1
             self.flows[flow_key]["bytes"] += pkt_len
+
+            # ── PIPELINE 2: ALERTING ONLY ──
+            # Skip passing whitelisted traffic into specific detection engines
+            if _is_whitelisted(src) or _is_whitelisted(dst):
+                pass
+            else:
+                # ── DNS query extraction ──
+                if packet.haslayer("DNS") and hasattr(packet["DNS"], "qd") and packet["DNS"].qd:
+                    try:
+                        qname = packet["DNS"].qd.qname
+                        if isinstance(qname, bytes):
+                            qname = qname.decode("utf-8", errors="ignore").rstrip(".")
+                        elif isinstance(qname, str):
+                            qname = qname.rstrip(".")
+                        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+                        self.dns_analyzer.process_dns(src, dst, qname, ts)
+                    except Exception:
+                        pass
+
+                # ── C2 beaconing tracking ──
+                if not _is_private(dst):
+                    self.beaconing_detector.record_connection(src, dst, pkt_len, is_external=True)
 
         if time.time() - self.start_time >= config.TIME_WINDOW:
             self.extract_features()
@@ -306,7 +415,7 @@ class FeatureExtractor:
         full_timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         self.window_number += 1
 
-        filtered_ips = {ip: c for ip, c in self.src_ips.items() if ip not in WHITELIST}
+        filtered_ips = {ip: c for ip, c in self.src_ips.items() if not _is_whitelisted(ip)}
         top_ip = max(filtered_ips, key=filtered_ips.get) if filtered_ips else "None"
 
         # ── Protocol distribution ──
@@ -357,7 +466,7 @@ class FeatureExtractor:
         scan_ips = []
         port_scan_thresh = getattr(config, "PORT_SCAN_THRESHOLD", 15)
         for ip, ports in self.ip_ports.items():
-            if ip in WHITELIST:
+            if _is_whitelisted(ip):
                 continue
             if len(ports) > port_scan_thresh:
                 scan_ips.append(ip)
@@ -370,7 +479,7 @@ class FeatureExtractor:
         # diversity, and the PPS must exceed 4× the device's baseline.
         brute_ips = []
         for ip, port_hits in self.ip_dst_port_hits.items():
-            if ip in WHITELIST:
+            if _is_whitelisted(ip):
                 continue
             ip_port_count = len(self.ip_ports.get(ip, set()))
             if ip_port_count > 3:
@@ -494,6 +603,13 @@ class FeatureExtractor:
                 ],
                 recommended_action="Investigate source IP traffic patterns. Consider rate limiting if sustained.",
                 response_simulated="Rate limit applied (simulated): throttle traffic from source IP to 50 pps.",
+                metrics={
+                    "Z-score": round((packet_rate - (self.anomaly_detector.baseline_mean_pps or packet_rate)) / max(self.anomaly_detector.baseline_std_pps or 1, 0.01), 2),
+                    "Threshold value": round(getattr(self.anomaly_detector, "pps_threshold", 0), 2),
+                    "Current packet rate (pps)": round(packet_rate, 2),
+                    "Baseline mean": round(self.anomaly_detector.baseline_mean_pps or 0, 2),
+                    "Standard deviation": round(self.anomaly_detector.baseline_std_pps or 0, 2),
+                }
             )
             self._enrich_alert(alert)
             window_alerts.append(alert)
@@ -524,6 +640,11 @@ class FeatureExtractor:
                     ],
                     recommended_action=f"Block or rate-limit IP {src}. Investigate for volumetric DoS attack.",
                     response_simulated=f"Firewall rule added (simulated): DROP all traffic from {src}.",
+                    metrics={
+                        "Current PPS": round(packet_rate, 2),
+                        "Baseline PPS": round(self.anomaly_detector.baseline_mean_pps or 0, 2),
+                        "Multiplication factor": f"{round(packet_rate / max(self.anomaly_detector.baseline_mean_pps or 1, 0.01), 1)}x baseline",
+                    }
                 )
                 self._enrich_alert(alert)
                 window_alerts.append(alert)
@@ -554,6 +675,11 @@ class FeatureExtractor:
                 ],
                 recommended_action=f"Block IP {ip} at the perimeter firewall. Flag for SOC review.",
                 response_simulated=f"IP {ip} added to blocklist (simulated). Alert forwarded to SOC team.",
+                metrics={
+                    "Number of unique ports accessed": n_ports,
+                    "Threshold": port_scan_thresh,
+                    "Time window": f"{config.TIME_WINDOW}s",
+                }
             )
             self._enrich_alert(alert)
             window_alerts.append(alert)
@@ -581,16 +707,71 @@ class FeatureExtractor:
                 ],
                 recommended_action=f"Temporarily block IP {ip}. Enable account lockout on {svc} service.",
                 response_simulated=f"IP {ip} temporarily blocked for 15 min (simulated). {svc} rate-limited.",
+                metrics={
+                    "Number of attempts": hits,
+                    "Target port/service": f"{port} ({svc})",
+                    "Time duration": f"{config.TIME_WINDOW}s",
+                }
             )
             self._enrich_alert(alert)
             window_alerts.append(alert)
 
         # ---- Save alerts with cooldown + deduplication ----
         now_epoch = time.time()
+
+        # --- Suppression rule check ---
+        def _is_suppressed(alert):
+            try:
+                import json as _json
+                settings_paths = [
+                    "/home/cybersec/pro/X-NIDS/logs/settings.json",
+                    "/home/cybersec/pro/X-NIDS/dashboard/settings.json",
+                ]
+                sups = []
+                for sp in settings_paths:
+                    if os.path.exists(sp):
+                        try:
+                            with open(sp, "r") as f:
+                                sups = _json.load(f).get("suppressions", [])
+                            break
+                        except Exception:
+                            continue
+                for rule in sups:
+                    if rule.get("expires", 0) != 0 and rule["expires"] < now_epoch:
+                        continue
+                    rt = rule.get("type", "")
+                    target = rule.get("target", "")
+                    matched = False
+                    if rt == "ip" and alert.get("source_ip") == target:
+                        matched = True
+                    elif rt == "alert_type" and alert.get("classification") == target:
+                        matched = True
+                    elif rt == "both" and alert.get("source_ip") == target.split("|")[0].strip():
+                        matched = True
+                    if matched:
+                        rule["suppressed_count"] = rule.get("suppressed_count", 0) + 1
+                        for sp in settings_paths:
+                            if os.path.exists(sp):
+                                try:
+                                    with open(sp, "r") as f:
+                                        sd = _json.load(f)
+                                    sd["suppressions"] = sups
+                                    with open(sp, "w") as f:
+                                        _json.dump(sd, f, indent=2)
+                                except Exception:
+                                    pass
+                                break
+                        return True
+            except Exception:
+                pass
+            return False
+
         if risk >= risk_threshold and window_alerts:
             seen_keys = set()
             deduped = []
             for a in window_alerts:
+                if _is_suppressed(a):
+                    continue
                 key = (a["source_ip"], a["classification"])
                 if key in seen_keys:
                     continue
@@ -603,6 +784,7 @@ class FeatureExtractor:
             for a in deduped:
                 self.last_alert_time[a["source_ip"]] = now_epoch
                 self._log_alert_terminal(a, risk)
+                
                 # Add to attack timeline
                 self.attack_timelines[a["source_ip"]].append({
                     "event": a["attack_type"],
@@ -615,16 +797,15 @@ class FeatureExtractor:
 
             self.alerts.extend(deduped)
 
+        # ── Trim history / alerts properly to maintain reference ──
         if len(self.alerts) > 200:
-            self.alerts = self.alerts[-200:]
+            del self.alerts[:-200]
         self._save_alerts()
 
         # ==============================================================
         #  IP TRACKER
         # ==============================================================
         for ip, count in self.src_ips.items():
-            if ip in WHITELIST:
-                continue
             if ip not in self.ips_tracker:
                 self.ips_tracker[ip] = {
                     "ip": ip,
@@ -728,11 +909,7 @@ class FeatureExtractor:
             "top_ips": top_ips_list,
             "top_ports": top_ports_list,
             "alerts": alerts_out,
-            "threat_level": {
-                "score": risk,
-                "status": threat_status,
-                "priority": risk_priority,
-            },
+            "threat_level": self._compute_threat_level(),
         }
 
         os.makedirs(LOGS_DIR, exist_ok=True)
@@ -748,9 +925,10 @@ class FeatureExtractor:
     def _build_alert(self, *, timestamp, src_ip, attack_type, severity,
                      classification, confidence, packet_rate, unique_ports,
                      risk_score, risk_factors, proto_dist, traffic_summary,
-                     explanation, recommended_action, response_simulated):
+                     explanation, recommended_action, response_simulated, metrics=None):
         mitre = get_mitre_mapping(classification)
         return {
+            "_epoch": time.time(),
             "timestamp": timestamp,
             "source_ip": src_ip,
             "attack_type": attack_type,
@@ -768,6 +946,7 @@ class FeatureExtractor:
             "explanation": list(explanation),
             "recommended_action": recommended_action,
             "response_simulated": response_simulated,
+            "metrics": metrics or {},
             # MITRE ATT&CK mapping
             "mitre": mitre,
             # Enrichment fields (filled by _enrich_alert)
@@ -818,8 +997,6 @@ class FeatureExtractor:
         """Update per-IP behavioural profiles from current window."""
         duration = time.time() - self.start_time
         for ip, count in self.src_ips.items():
-            if ip in WHITELIST:
-                continue
             pps = count / max(duration, 0.01)
             if ip not in self.device_profiles:
                 self.device_profiles[ip] = {
@@ -844,30 +1021,46 @@ class FeatureExtractor:
     #  Terminal alert logger (structured, readable)
     # ==================================================================
     @staticmethod
+    def format_alert(alert_data):
+        """Format alert strictly using SOC-grade output style."""
+        emoji_map = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}
+        sev = alert_data.get("severity", "Medium").upper()
+        emoji = emoji_map.get(alert_data.get("severity", "Medium"), "🟡")
+        
+        lines = []
+        lines.append(f"🚨 ALERT - {sev}")
+        cls = alert_data.get("classification", "").upper()
+        if not cls:
+            cls = alert_data.get("attack_type", "UNKNOWN").upper().replace(" ", "_")
+        lines.append(f"Type: {cls}")
+        lines.append(f"Source: {alert_data.get('source_ip', 'Unknown')}")
+        if alert_data.get("dest_ip"):
+            lines.append(f"Destination IP: {alert_data['dest_ip']}")
+        lines.append(f"Protocol: {alert_data.get('protocol', 'Unknown')}")
+        lines.append(f"Timestamp: {alert_data.get('timestamp', '')}")
+        lines.append(f"Risk Score: {alert_data.get('risk_score', 0)}")
+        lines.append("")
+        
+        metrics = alert_data.get("metrics", {})
+        if metrics:
+            for k, v in metrics.items():
+                lines.append(f"{k}: {v}")
+            lines.append("")
+            
+        reasons = alert_data.get("explanation", [])
+        if reasons:
+            lines.append("Reason:")
+            for r in reasons:
+                lines.append(f"- {r}")
+                
+        return "\n".join(lines)
+
+    @staticmethod
     def _log_alert_terminal(alert, risk):
-        ts = alert["timestamp"].split(" ")[-1] if " " in alert["timestamp"] else alert["timestamp"]
-        mitre = alert.get("mitre", {})
-        mitre_str = f" [{mitre.get('technique_id', '')}]" if mitre.get("technique_id") else ""
-        lines = [
-            f"",
-            f"  ┌─ [ALERT] {ts} ──────────────────────────────",
-            f"  │  Type       : {alert['attack_type']}{mitre_str}",
-            f"  │  Source IP  : {alert['source_ip']}",
-            f"  │  Risk Score : {risk}/100 ({_risk_category(risk)})",
-            f"  │  Confidence : {alert['confidence']}%",
-            f"  │  Severity   : {alert['severity']}",
-        ]
-        if mitre.get("tactic"):
-            lines.append(f"  │  MITRE      : {mitre['tactic']} → {mitre['technique_name']}")
-        intel = alert.get("threat_intel")
-        if intel and not intel.get("is_private"):
-            lines.append(f"  │  Intel      : {intel.get('country', '?')} / {intel.get('isp', '?')} ({intel.get('asn', '?')})")
-        if alert.get("explanation"):
-            lines.append(f"  │  Reason:")
-            for reason in alert["explanation"][:3]:
-                lines.append(f"  │    • {reason}")
-        lines.append(f"  └─────────────────────────────────────────────")
-        print("\n".join(lines))
+        formatted = FeatureExtractor.format_alert(alert)
+        print("\n" + "="*50)
+        print(formatted)
+        print("="*50 + "\n")
 
     # ==================================================================
     #  Incident Report Generator

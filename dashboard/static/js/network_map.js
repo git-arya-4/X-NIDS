@@ -21,7 +21,7 @@ function renderNetmap() {
 
     main.innerHTML = `
     <div class="page-title">Network Topology Map</div>
-    <div class="card" style="position:relative;height:600px;overflow:hidden;padding:0;background:var(--bg);border:1px solid var(--border);" id="map-container">
+    <div class="card" style="position:relative;height:calc(100vh - 160px);min-height:600px;overflow:hidden;padding:0;background:var(--bg);border:1px solid var(--border);" id="map-container">
         <canvas id="netCanvas" style="position:absolute;inset:0;"></canvas>
         <div class="netmap-legend" style="background:var(--surface);border:1px solid var(--border);color:var(--text-dim)">
             <span><span class="nl-dot" style="background:#3b82f6"></span> Internal Host</span>
@@ -192,7 +192,7 @@ function startNetmap() {
         if (nodes.length > 0 && w && h) {
             orbitAngleOff += 0.0003 * dt; // Slow, stable orbit
             const cx = w / 2, cy = h / 2;
-            const radius = Math.min(w, h) / 2.8;
+            const radius = Math.min(w, h) / 2.2;
             const count = nodes.length;
 
             for (let i = 0; i < count; i++) {
@@ -215,10 +215,10 @@ function startNetmap() {
                     const dy = n.y - n2.y;
                     const distSq = dx * dx + dy * dy;
                     if (distSq > 0) {
-                        const rSum = nodeRadius(n) + nodeRadius(n2) + 20; // 20px padding
+                        const rSum = nodeRadius(n) + nodeRadius(n2) + 50;
                         if (distSq < rSum * rSum) {
                             const dist = Math.sqrt(distSq);
-                            const force = (rSum - dist) * 0.15;
+                            const force = (rSum - dist) * 0.25;
                             fx += (dx / dist) * force;
                             fy += (dy / dist) * force;
                         }
@@ -408,6 +408,26 @@ function startNetmap() {
             ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
             ctx.fillStyle = "#ef4444";
             ctx.fill();
+        }
+
+        // Blocked nodes — red X overlay
+        if (window._blockedIps && window._blockedIps.size > 0) {
+            ctx.strokeStyle = "#ff2d55";
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = "round";
+            for (const n of nodes) {
+                if (!window._blockedIps.has(n.id)) continue;
+                const r = nodeRadius(n) + 2;
+                ctx.globalAlpha = 0.85;
+                ctx.beginPath();
+                ctx.moveTo(n.x - r, n.y - r);
+                ctx.lineTo(n.x + r, n.y + r);
+                ctx.moveTo(n.x + r, n.y - r);
+                ctx.lineTo(n.x - r, n.y + r);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+            ctx.lineWidth = 1.8;
         }
 
         /* 5. Labels (single font set) */

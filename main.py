@@ -18,7 +18,6 @@ def main():
     # 1. Print the Banner
     print("=" * 60)
     print("  X-NIDS — Intelligent Intrusion Detection System")
-    print("  [Final Year Project - Behavioral & Threat-Aware Analysis]")
     print("=" * 60)
     
     # 2. Check for Root/Sudo Privileges (Required for Sniffing)

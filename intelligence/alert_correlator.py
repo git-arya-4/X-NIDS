@@ -142,5 +142,7 @@ class AlertCorrelator:
                 "max_risk": inc["max_risk"],
                 "description": self._describe(inc),
                 "active": inc["incident_id"] in {v["incident_id"] for v in self.incidents.values()},
+                "status": inc.get("status"),
+                "resolve_reason": inc.get("resolve_reason"),
             })
         return result
